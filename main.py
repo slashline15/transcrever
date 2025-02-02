@@ -1,8 +1,11 @@
 import sounddevice as sd
 import soundfile as sf
+import numpy as np
 from openai import OpenAI
 import pyperclip
+import keyboard
 from dotenv import load_dotenv
+import time
 import os
 
 load_dotenv()
@@ -13,7 +16,9 @@ FS = 16000            # frequência de amostragem
 ARQUIVO_AUDIO = "gravacao.wav"
 
 
-OPENAI_API_KEY = load_dotenv.os("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# load_dotenv("OPENAI_API_KEY")
+
 
 # Inicializa o cliente OpenAI
 client = OpenAI(api_key=OPENAI_API_KEY)
