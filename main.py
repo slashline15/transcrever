@@ -251,8 +251,28 @@ class GravadorWidget:
             self.update_status_text("Nenhum áudio gravado")
             self.root.after(2000, self.root.destroy)
 
+    # NOVO: Método para aprimorar o texto usando GPT-4-turbo
+    def aprimorar_texto(self, texto):
+        """Aprimora o texto bruto do Whisper usando GPT"""
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        prompt = (
+            "Reescreva o seguinte texto transcrito de uma gravação de voz, corrigindo erros, adicionando pontuação "
+            "e tornando a leitura mais fluida:\n\n"
+            f"{texto}"
+        )
+    
+        resposta = client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        return resposta.choices[0].message.content.strip()
+
+
+    # Atualização do método transcribe_audio para usar aprimoramento
     def transcribe_audio(self):
-        """Transcreve o áudio usando a API do Whisper"""
+        """Transcreve o áudio e melhora o texto antes de copiar"""
         client = OpenAI(api_key=OPENAI_API_KEY)
         
         try:
@@ -262,12 +282,15 @@ class GravadorWidget:
                     file=audio_file
                 )
             
-            transcricao = resposta.text.strip()
-            pyperclip.copy(transcricao)
+            transcricao_bruta = resposta.text.strip()
+            # Chama o método para melhorar o texto
+            transcricao_aprimorada = self.aprimorar_texto(transcricao_bruta)
+            
+            pyperclip.copy(transcricao_aprimorada)
             
             message_queue.put({
                 'type': 'status',
-                'text': 'Transcrição copiada para a área de transferência!'
+                'text': 'Transcrição formatada e copiada para a área de transferência!'
             })
             message_queue.put({'type': 'finish'})
             
@@ -276,6 +299,7 @@ class GravadorWidget:
                 'type': 'status',
                 'text': f'Erro na transcrição: {str(e)}'
             })
+
 
 def audio_callback(indata, frames, time_info, status):
     """Callback para processar o áudio recebido"""
