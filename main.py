@@ -10,6 +10,7 @@ import os
 import customtkinter as ctk
 from datetime import datetime, timedelta
 import threading
+import queue
 
 load_dotenv()
 
@@ -18,29 +19,28 @@ FS = 16000                                        # frequência de amostragem
 ARQUIVO_AUDIO = "gravacao.wav"                    # Nome do arquivo de áudio
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")      # Chave da OpenaAi
 
-
 # Variáveis globais
 audio_segments = []     # Armazena os pedaços de áudio gravados
 stream = None           # Referência para o stream de áudio
 is_recording = False    # Flag para indicar se está gravando
 finish = False          # Flag para finalizar a gravação
 start_time = None       # Tempo de início da gravação
+# Fila para comunicação entre threads
+message_queue = queue.Queue()
 
 class GravadorWidget:
     def __init__(self):
-        # configuração da janela principal
+        # Configuração da janela principal
         self.root = ctk.CTk()
         self.root.title("Gravador de Áudio")
         self.root.geometry("400x300")
         
-        # Crição dos elementos da interface
+        # Criação dos elementos da interface
         self.frame = ctk.CTkFrame(self.root)
         self.frame.pack(pady=20, padx=20, fill="both", expand=True)
         
         # Label para mostrar o tempo de gravação
-        self.time_label = ctk.CTkLabel(self.frame,
-                                      text="00:00:00",
-                                      font=("Arial", 24))
+        self.time_label = ctk.CTkLabel(self.frame, text="00:00:00", font=("Arial", 24))
         self.time_label.pack(pady=20)
         
         # Botões de controle
@@ -61,40 +61,71 @@ class GravadorWidget:
         self.finish_button.pack(pady=10)
         
         # Label de status
-        self.status_label = ctk.CTkLabel(
-            self.frame,
-            text="Pronto para gravar"
-        )
+        self.status_label = ctk.CTkLabel(self.frame, text="Pronto para gravar")
+        self.status_label.pack(pady=10)
         
-        # Inicializa o temporizador
+        # Inicializa o temporizador e o verificador de mensagens
         self.update_timer()
+        self.check_messages()
+        self.total_elapsed = timedelta()  # Tempo total acumulado
+        self.pause_time = None            # Momento em que pausou
+        self.is_paused = False           # Estado de pausa
         
-        # Registra os atalhos do teclado
+        # Registra os atalhos de teclado
         keyboard.add_hotkey('F9', self.toggle_recording)
         keyboard.add_hotkey('F11', self.finish_recording)
+
+    def check_messages(self):
+        """Verifica mensagens da thread de processamento"""
+        try:
+            # Verifica se há mensagens na fila (não bloqueia)
+            while True:
+                message = message_queue.get_nowait()
+                if message.get('type') == 'status':
+                    self.status_label.configure(text=message['text'])
+                elif message.get('type') == 'finish':
+                    self.root.after(2000, self.root.destroy)
+        except queue.Empty:
+            pass
         
+        # Agenda próxima verificação
+        self.root.after(100, self.check_messages)
+
     def update_timer(self):
         """Atualiza o timer na interface"""
         global start_time, is_recording
         
         if is_recording and start_time:
-            elapsed_time = datetime.now() - start_time
-            # Remove microssegundos da exibição
-            elapsed_str = str(elapsed_time).split('.')[0]
-            self.time_label.configure(text=elapsed_str)
-            
-        # Agenda a próxima atualização
-        self.root.after(1000, self.update_timer)
+            current_time = datetime.now()
+            if not self.is_paused:
+                # Calcula o tempo decorrido desde o início ou retomada
+                current_elapsed = current_time - start_time
+                # Adiciona ao tempo total acumulado
+                self.time_label.configure(text=str(self.total_elapsed + current_elapsed).split('.')[0])
+            # else:
+            #     self.total_elapsed += current_time - start_time
+            # start_time = current_time
+            # elapsed_time = datetime.now() - start_time
+            # elapsed_str = str(elapsed_time).split('.')[0]
+            # self.time_label.configure(text=elapsed_str)
         
+        self.root.after(100, self.update_timer) # Atualiza a cada 100ms para maior precisão
+
     def toggle_recording(self):
-        """Alterna entre iniciar e pausar a gravação"""
+        """Alterna entre iniciar e pausar a gravação com controle preciso do tempo"""
         global stream, is_recording, start_time
         
-        if not is_recording:
-            # Inicia a gravação
+        if not is_recording:  # Iniciando ou retomando gravação
             is_recording = True
-            if start_time is None:
+            self.is_paused = False
+            
+            if start_time is None:  # Primeira vez iniciando
                 start_time = datetime.now()
+                self.total_elapsed = timedelta()
+            else:  # Retomando após pausa
+                # Atualiza o tempo inicial considerando o tempo pausado
+                start_time = datetime.now()
+                
             stream = sd.InputStream(
                 samplerate=FS, 
                 channels=1, 
@@ -104,16 +135,23 @@ class GravadorWidget:
             stream.start()
             self.record_button.configure(text="Pausar (F9)", fg_color="orange")
             self.status_label.configure(text="Gravando...")
-        else:
-            # Pausa a gravação
+            
+        else:  # Pausando gravação
             is_recording = False
+            self.is_paused = True
+            
+            # Calcula e acumula o tempo até a pausa
+            if start_time:
+                self.total_elapsed += datetime.now() - start_time
+            
             if stream is not None:
                 stream.stop()
                 stream.close()
                 stream = None
+                
             self.record_button.configure(text="Continuar (F9)", fg_color="red")
             self.status_label.configure(text="Pausado")
-            
+
     def finish_recording(self):
         """Finaliza a gravação e processa o áudio"""
         global finish, is_recording, stream
@@ -125,22 +163,21 @@ class GravadorWidget:
             is_recording = False
         
         finish = True
-        self.status_label.configure(text="Processando gravação...")
+        message_queue.put({'type': 'status', 'text': 'Processando gravação...'})
         self.root.after(100, self.process_audio)
-        
+
     def process_audio(self):
         """Processa o áudio gravado e obtém a transcrição"""
-        # Salva o áudio se tiver gravado alguma coisa
         if audio_segments:
             audio_data = np.concatenate(audio_segments, axis=0)
             sf.write(ARQUIVO_AUDIO, audio_data, FS)
-            self.status_label.configure(text="Transcrevendo áudio...")
+            message_queue.put({'type': 'status', 'text': 'Transcrevendo áudio...'})
             
             # Inicia a transcrição em uma thread separada
             threading.Thread(target=self.transcribe_audio).start()
         else:
-            self.status_label.configure(text="Nenhum áudio gravado")
-            self.root.after(2000, self.root.destroy)
+            message_queue.put({'type': 'status', 'text': 'Nenhum áudio gravado'})
+            message_queue.put({'type': 'finish'})
 
     def transcribe_audio(self):
         """Transcreve o áudio usando a API do Whisper"""
@@ -156,32 +193,28 @@ class GravadorWidget:
             transcricao = resposta.text.strip()
             pyperclip.copy(transcricao)
             
-            # Atualiza a interface na thread principal
-            self.root.after(0, lambda: self.status_label.configure(
-                text="Transcrição copiada para a área de transferência!"
-            ))
-            self.root.after(2000, self.root.destroy)
+            message_queue.put({
+                'type': 'status',
+                'text': 'Transcrição copiada para a área de transferência!'
+            })
+            message_queue.put({'type': 'finish'})
             
         except Exception as e:
-            self.root.after(0, lambda: self.status_label.configure(
-                text=f"Erro na transcrição: {str(e)}"
-            ))
-            
+            message_queue.put({
+                'type': 'status',
+                'text': f'Erro na transcrição: {str(e)}'
+            })
 
 def audio_callback(indata, frames, time_info, status):
     """Callback para processar o áudio recebido"""
     if status:
         print(status)
     audio_segments.append(indata.copy())
-    
+
 # Inicializa e executa a interface
 if __name__ == "__main__":
     app = GravadorWidget()
     app.root.mainloop()
-        
-
-
-
 
 # # Inicializa o cliente OpenAI
 # client = OpenAI(api_key=OPENAI_API_KEY)
