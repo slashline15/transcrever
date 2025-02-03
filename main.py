@@ -11,6 +11,8 @@ import customtkinter as ctk
 from datetime import datetime, timedelta
 import threading
 import queue
+import pystray
+from PIL import Image, ImageDraw  # Necessário para criar o ícone
 
 load_dotenv()
 
@@ -27,30 +29,39 @@ finish = False          # Flag para finalizar a gravação
 start_time = None       # Tempo de início da gravação
 message_queue = queue.Queue()  # Fila para comunicação entre threads
 
+def create_image():
+    """Cria uma imagem simples para o ícone da bandeja."""
+    width = 64
+    height = 64
+    image = Image.new("RGB", (width, height), "blue")
+    dc = ImageDraw.Draw(image)
+    dc.rectangle((width // 4, height // 4, width * 3 // 4, height * 3 // 4), fill="white")
+    return image
+
 class GravadorWidget:
     def __init__(self):
         # 1. Configuração inicial da janela
         self.root = ctk.CTk()
         self.root.title("Gravador de Áudio")
         self.root.geometry("400x450")  # Ajustei a altura para acomodar a área de logs
-        
+
         # 2. Criação do frame principal
         self.frame = ctk.CTkFrame(self.root)
         self.frame.pack(pady=20, padx=20, fill="both", expand=True)
-        
+
         # 3. Elementos visuais
         self.time_label = ctk.CTkLabel(self.frame, text="00:00:00", font=("Arial", 24))
         self.time_label.pack(pady=10)
-        
+
         self.status_label = ctk.CTkLabel(self.frame, text="Pronto para gravar", wraplength=350)
         self.status_label.pack(pady=5)
-        
+
         self.recording_indicator = ctk.CTkLabel(self.frame, text="●", font=("Arial", 24), text_color="gray")
         self.recording_indicator.pack(pady=5)
-        
+
         self.segments_label = ctk.CTkLabel(self.frame, text="Segmentos gravados: 0", font=("Arial", 12))
         self.segments_label.pack(pady=5)
-        
+
         self.record_button = ctk.CTkButton(
             self.frame,
             text="▶️ Gravar (F9)",
@@ -59,54 +70,82 @@ class GravadorWidget:
             hover_color="darkred"
         )
         self.record_button.pack(pady=10)
-        
+
         self.finish_button = ctk.CTkButton(
             self.frame,
             text="⏹️ Finalizar (F11)",
             command=self.finish_recording
         )
         self.finish_button.pack(pady=10)
-        
+
         # Novo: Widget de logs minimalista
         self.log_textbox = ctk.CTkTextbox(self.frame, width=350, height=100)
-        self.log_textbox.configure(state="disabled")  # Impede edição manual
+        self.log_textbox.configure(state="disabled")
         self.log_textbox.pack(pady=10)
-        
-        # 4. Variáveis de controle
+
+        # Variáveis de controle
         self.total_elapsed = timedelta()
         self.pause_time = None
         self.is_paused = False
-        
-        # 5. Atalhos de teclado
+
+        # Em vez de:
         keyboard.add_hotkey('F9', self.toggle_recording)
         keyboard.add_hotkey('F11', self.finish_recording)
         
-        # 6. Inicialização dos atualizadores periódicos
+        # Use:
+        # keyboard.add_hotkey('ctrl+alt+g', self.toggle_recording)
+        # keyboard.add_hotkey('ctrl+alt+f', self.finish_recording)
+
+
+        # Atualizadores periódicos
         self.update_timer()
         self.check_messages()
         self.update_status_display()
-    
+
+        # Configura o ícone da bandeja e minimiza a janela
+        self.setup_tray()
+        self.root.after(100, self.root.withdraw)  # Minimiza logo após iniciar
+        
+        self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
+
+    def setup_tray(self):
+        """Configura o ícone na bandeja com pystray."""
+        image = create_image()
+        menu = pystray.Menu(
+            pystray.MenuItem('Mostrar', self.show_window),
+            pystray.MenuItem('Sair', self.exit_app)
+        )
+        self.tray_icon = pystray.Icon("Gravador", image, "Gravador de Áudio", menu)
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def show_window(self, icon, item):
+        """Mostra a janela principal."""
+        self.root.after(0, self.root.deiconify)
+
+    def exit_app(self, icon, item):
+        """Encerra o app."""
+        self.root.after(0, self.root.quit)
+        self.tray_icon.stop()
+
     def add_log(self, message):
-        """Adiciona uma mensagem de log com timestamp na área de logs."""
+        """Adiciona uma mensagem de log com timestamp."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_message = f"{timestamp} - {message}\n"
         self.log_textbox.configure(state="normal")
         self.log_textbox.insert("end", log_message)
         self.log_textbox.configure(state="disabled")
-        self.log_textbox.see("end")  # Rola para o final
-    
+        self.log_textbox.see("end")
+
     def update_status_display(self):
         """Atualiza os indicadores visuais de status."""
         global is_recording, audio_segments
-        
         if is_recording and not self.is_paused:
             self.recording_indicator.configure(text_color="red")
         else:
             self.recording_indicator.configure(text_color="gray")
-        
         self.segments_label.configure(text=f"Segmentos gravados: {len(audio_segments)}")
         self.root.after(100, self.update_status_display)
-    
+
     def check_messages(self):
         """Verifica mensagens da thread de processamento."""
         try:
@@ -115,11 +154,12 @@ class GravadorWidget:
                 if message.get('type') == 'status':
                     self.update_status_text(message['text'])
                 elif message.get('type') == 'finish':
-                    self.root.after(2000, self.root.destroy)
+                    # Em vez de fechar, podemos apenas atualizar o status
+                    self.update_status_text("Operação finalizada!")
         except queue.Empty:
             pass
         self.root.after(100, self.check_messages)
-    
+
     def update_timer(self):
         """Atualiza o timer na interface."""
         global start_time, is_recording
@@ -128,7 +168,7 @@ class GravadorWidget:
             current_elapsed = current_time - start_time
             self.time_label.configure(text=str(self.total_elapsed + current_elapsed).split('.')[0])
         self.root.after(100, self.update_timer)
-    
+
     def format_status_message(self, message):
         """Formata mensagens longas para exibição adequada."""
         max_chars = 40
@@ -144,29 +184,32 @@ class GravadorWidget:
         if current_line:
             lines.append(' '.join(current_line))
         return '\n'.join(lines)
-    
+
     def update_status_text(self, message):
         """Atualiza o texto de status com formatação adequada."""
         formatted_message = self.format_status_message(message)
         self.status_label.configure(text=formatted_message)
-    
-    # Método para aprimorar o texto com GPT-4-turbo (já implementado anteriormente)
+
     def aprimorar_texto(self, texto):
         """Aprimora o texto bruto do Whisper usando GPT"""
         client = OpenAI(api_key=OPENAI_API_KEY)
         prompt = (
             "Reescreva o seguinte texto transcrito de uma gravação de voz, corrigindo erros, adicionando pontuação "
-            "e tornando a leitura mais fluida:\n\n"
+            "e tornando a leitura mais fluida. Idioma Português Brasileiro:\n\n"
             f"{texto}"
         )
         resposta = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
+        # Registra o consumo de tokens, se disponível
+        #tokens = resposta.get("usage", {}).get("total_tokens", "N/D")
+        #self.add_log(f"Tokens utilizados no aprimoramento: {tokens}")
+        
         return resposta.choices[0].message.content.strip()
-    
-    # Controle da gravação
+
     def toggle_recording(self):
+        """Alterna entre iniciar e pausar a gravação."""
         global stream, is_recording, start_time
         if not is_recording:
             is_recording = True
@@ -205,7 +248,7 @@ class GravadorWidget:
                 hover_color="#8b0000"
             )
             self.update_status_text("Gravação pausada - F9 para continuar, F11 para finalizar")
-    
+
     def finish_recording(self):
         """Finaliza a gravação e processa o áudio."""
         global finish, is_recording, stream
@@ -218,7 +261,7 @@ class GravadorWidget:
         self.update_status_text("Processando gravação...")
         self.add_log("Processando gravação...")
         self.root.after(100, self.process_audio)
-    
+
     def process_audio(self):
         """Processa o áudio gravado e obtém a transcrição."""
         if audio_segments:
@@ -229,8 +272,7 @@ class GravadorWidget:
             threading.Thread(target=self.transcribe_audio).start()
         else:
             self.update_status_text("Nenhum áudio gravado")
-            self.root.after(2000, self.root.destroy)
-    
+
     def transcribe_audio(self):
         """Transcreve o áudio e melhora o texto antes de copiar."""
         client = OpenAI(api_key=OPENAI_API_KEY)
@@ -255,6 +297,10 @@ class GravadorWidget:
                 'type': 'status',
                 'text': f'Erro na transcrição: {str(e)}'
             })
+            
+    def hide_window(self):
+        """Minimiza a janela."""
+        self.root.withdraw()
 
 def audio_callback(indata, frames, time_info, status):
     """Callback para processar o áudio recebido."""
