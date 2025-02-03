@@ -75,6 +75,37 @@ class GravadorWidget:
         keyboard.add_hotkey('F9', self.toggle_recording)
         keyboard.add_hotkey('F11', self.finish_recording)
 
+        
+        # Adicione um indicador visual de status mais detalhado
+        self.recording_indicator = ctk.CTkLabel(
+            self.frame,
+            text="●",  # Ponto que servirá como indicador
+            font=("Arial", 24),
+            text_color="gray"  # Começa cinza
+        )
+        self.recording_indicator.pack(pady=5)
+        
+        # Adicione um contador de segmentos
+        self.segments_label = ctk.CTkLabel(
+            self.frame,
+            text="Segmentos gravados: 0",
+            font=("Arial", 12)
+        )
+        self.segments_label.pack(pady=5)
+
+    def update_status_display(self):
+        """Atualiza os indicadores visuais de status"""
+        if is_recording:
+            self.recording_indicator.configure(text_color="red")  # Vermelho quando gravando
+            self.segments_label.configure(
+                text=f"Segmentos gravados: {len(audio_segments)}"
+            )
+        else:
+            self.recording_indicator.configure(text_color="gray")  # Cinza quando pausado
+        
+        # Atualiza a cada 500ms
+        self.root.after(500, self.update_status_display)
+
     def check_messages(self):
         """Verifica mensagens da thread de processamento"""
         try:
@@ -111,21 +142,23 @@ class GravadorWidget:
         
         self.root.after(100, self.update_timer) # Atualiza a cada 100ms para maior precisão
 
+
     def toggle_recording(self):
-        """Alterna entre iniciar e pausar a gravação com controle preciso do tempo"""
+        """Função melhorada para alternar a gravação"""
         global stream, is_recording, start_time
         
-        if not is_recording:  # Iniciando ou retomando gravação
+        if not is_recording:
             is_recording = True
             self.is_paused = False
             
-            if start_time is None:  # Primeira vez iniciando
+            if start_time is None:
                 start_time = datetime.now()
                 self.total_elapsed = timedelta()
-            else:  # Retomando após pausa
-                # Atualiza o tempo inicial considerando o tempo pausado
+                self.status_label.configure(text="Iniciando nova gravação...")
+            else:
                 start_time = datetime.now()
-                
+                self.status_label.configure(text="Retomando gravação...")
+            
             stream = sd.InputStream(
                 samplerate=FS, 
                 channels=1, 
@@ -133,8 +166,11 @@ class GravadorWidget:
                 callback=audio_callback
             )
             stream.start()
-            self.record_button.configure(text="Pausar (F9)", fg_color="orange")
-            self.status_label.configure(text="Gravando...")
+            self.record_button.configure(
+                text="⏸️ Pausar (F9)",
+                fg_color="orange",
+                hover_color="#b37400"
+            )
             
         else:  # Pausando gravação
             is_recording = False
@@ -148,10 +184,16 @@ class GravadorWidget:
                 stream.stop()
                 stream.close()
                 stream = None
-                
-            self.record_button.configure(text="Continuar (F9)", fg_color="red")
-            self.status_label.configure(text="Pausado")
-
+            
+            self.record_button.configure(
+                text="▶️ Continuar (F9)",
+                fg_color="red",
+                hover_color="#8b0000"
+            )
+            self.status_label.configure(
+                text="Gravação pausada - Pressione F9 para continuar ou F11 para finalizar"
+            )
+            
     def finish_recording(self):
         """Finaliza a gravação e processa o áudio"""
         global finish, is_recording, stream
