@@ -1,3 +1,6 @@
 venv/
 gravacao.wav
 .env
+main.spec
+dist/
+build/
