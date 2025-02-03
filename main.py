@@ -30,20 +30,30 @@ message_queue = queue.Queue()
 
 class GravadorWidget:
     def __init__(self):
-        # Configuração da janela principal
+        # 1. Configuração inicial da janela
         self.root = ctk.CTk()
         self.root.title("Gravador de Áudio")
         self.root.geometry("400x300")
         
-        # Criação dos elementos da interface
+        # 2. Criação do frame principal
         self.frame = ctk.CTkFrame(self.root)
         self.frame.pack(pady=20, padx=20, fill="both", expand=True)
         
-        # Label para mostrar o tempo de gravação
+        # 3. Criação de TODOS os elementos visuais
+        # Timer
         self.time_label = ctk.CTkLabel(self.frame, text="00:00:00", font=("Arial", 24))
         self.time_label.pack(pady=20)
         
-        # Botões de controle
+        # Indicador de gravação (bolinha)
+        self.recording_indicator = ctk.CTkLabel(
+        self.frame,
+        text="●",
+        font=("Arial", 24),
+        text_color="gray"
+        )
+        self.recording_indicator.pack(pady=5)
+        
+        # Botões
         self.record_button = ctk.CTkButton(
             self.frame,
             text="Gravar (F9)",
@@ -60,51 +70,79 @@ class GravadorWidget:
         )
         self.finish_button.pack(pady=10)
         
-        # Label de status
-        self.status_label = ctk.CTkLabel(self.frame, text="Pronto para gravar")
-        self.status_label.pack(pady=10)
-        
-        # Inicializa o temporizador e o verificador de mensagens
-        self.update_timer()
-        self.check_messages()
+        # 4. Inicialização de variáveis de controle
         self.total_elapsed = timedelta()  # Tempo total acumulado
         self.pause_time = None            # Momento em que pausou
         self.is_paused = False           # Estado de pausa
         
-        # Registra os atalhos de teclado
+        # 5. Inicialização dos atualizadores periódicos
+        self.update_timer()
+        self.check_messages()
+        self.update_status_display()
+        
+        # 6. Configuração dos atalhos de teclado
         keyboard.add_hotkey('F9', self.toggle_recording)
         keyboard.add_hotkey('F11', self.finish_recording)
-
         
-        # Adicione um indicador visual de status mais detalhado
-        self.recording_indicator = ctk.CTkLabel(
-            self.frame,
-            text="●",  # Ponto que servirá como indicador
-            font=("Arial", 24),
-            text_color="gray"  # Começa cinza
-        )
-        self.recording_indicator.pack(pady=5)
+        # Status e contador de segmentos
+        self.status_label = ctk.CTkLabel(self.frame, text="Pronto para gravar")
+        self.status_label.pack(pady=10)
         
-        # Adicione um contador de segmentos
-        self.segments_label = ctk.CTkLabel(
-            self.frame,
-            text="Segmentos gravados: 0",
-            font=("Arial", 12)
-        )
-        self.segments_label.pack(pady=5)
+        # self.segments_label = ctk.CTkLabel(
+        #     self.frame,
+        #     text="Segmentos gravados: 0",
+        #     font=("Arial", 12)
+        # )
+        # self.segments_label.pack(pady=5)
+        
+        
+        # # Label de status
+        # self.status_label = ctk.CTkLabel(self.frame, text="Pronto para gravar")
+        # self.status_label.pack(pady=10)
+        
+        # # Inicializa o temporizador e o verificador de mensagens
+        # self.update_timer()
+        # self.check_messages()
+        # self.update_status_display()  # Adicionar esta linha
+        # self.total_elapsed = timedelta()  # Tempo total acumulado
+        # self.pause_time = None            # Momento em que pausou
+        # self.is_paused = False           # Estado de pausa
+        
+        # # Adicione um indicador visual de status mais detalhado
+        # self.recording_indicator = ctk.CTkLabel(
+        #     self.frame,
+        #     text="●",  # Ponto que servirá como indicador
+        #     font=("Arial", 24),
+        #     text_color="gray"  # Começa cinza
+        # )
+        # self.recording_indicator.pack(pady=5)
+        
+        # # Adicione um contador de segmentos
+        # self.segments_label = ctk.CTkLabel(
+        #     self.frame,
+        #     text="Segmentos gravados: 0",
+        #     font=("Arial", 12)
+        # )
+        # self.segments_label.pack(pady=5)
+        
+        # # Registra os atalhos de teclado
+        # keyboard.add_hotkey('F9', self.toggle_recording)
+        # keyboard.add_hotkey('F11', self.finish_recording)
 
     def update_status_display(self):
         """Atualiza os indicadores visuais de status"""
+        global is_recording, audio_segments
+        
         if is_recording:
-            self.recording_indicator.configure(text_color="red")  # Vermelho quando gravando
+            self.recording_indicator.configure(text_color="red")
             self.segments_label.configure(
                 text=f"Segmentos gravados: {len(audio_segments)}"
             )
         else:
-            self.recording_indicator.configure(text_color="gray")  # Cinza quando pausado
+            self.recording_indicator.configure(text_color="gray")
         
-        # Atualiza a cada 500ms
-        self.root.after(500, self.update_status_display)
+        # Atualiza a cada 100ms para ser mais responsivo
+        self.root.after(100, self.update_status_display)
 
     def check_messages(self):
         """Verifica mensagens da thread de processamento"""
@@ -142,7 +180,6 @@ class GravadorWidget:
         
         self.root.after(100, self.update_timer) # Atualiza a cada 100ms para maior precisão
 
-
     def toggle_recording(self):
         """Função melhorada para alternar a gravação"""
         global stream, is_recording, start_time
@@ -154,7 +191,7 @@ class GravadorWidget:
             if start_time is None:
                 start_time = datetime.now()
                 self.total_elapsed = timedelta()
-                self.status_label.configure(text="Iniciando nova gravação...")
+                self.update_status_text("Iniciando nova gravação...")
             else:
                 start_time = datetime.now()
                 self.status_label.configure(text="Retomando gravação...")
@@ -190,9 +227,7 @@ class GravadorWidget:
                 fg_color="red",
                 hover_color="#8b0000"
             )
-            self.status_label.configure(
-                text="Gravação pausada - Pressione F9 para continuar ou F11 para finalizar"
-            )
+            self.update_status_text("Gravação pausada - Pressione F9 para continuar ou F11 para finalizar")
             
     def finish_recording(self):
         """Finaliza a gravação e processa o áudio"""
@@ -246,6 +281,30 @@ class GravadorWidget:
                 'type': 'status',
                 'text': f'Erro na transcrição: {str(e)}'
             })
+            
+    def format_status_message(self, message):
+        """Formata mensagens longas para exibição adequada"""
+        max_chars = 40  # Número máximo de caracteres por linha
+        words = message.split()
+        lines = []
+        current_line = []
+        
+        for word in words:
+            if sum(len(w) for w in current_line) + len(current_line) + len(word) > max_chars:
+                lines.append(' '.join(current_line))
+                current_line = [word]
+            else:
+                current_line.append(word)
+        
+        if current_line:
+            lines.append(' '.join(current_line))
+        
+        return '\n'.join(lines)
+
+    def update_status_text(self, message):
+        """Atualiza o texto de status com formatação adequada"""
+        formatted_message = self.format_status_message(message)
+        self.status_label.configure(text=formatted_message)
 
 def audio_callback(indata, frames, time_info, status):
     """Callback para processar o áudio recebido"""
