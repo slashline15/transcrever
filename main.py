@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import threading
 import queue
 import pystray
+from plyer import notification
 from PIL import Image, ImageDraw  # Necessário para criar o ícone
 
 load_dotenv()
@@ -218,6 +219,8 @@ class GravadorWidget:
                 start_time = datetime.now()
                 self.total_elapsed = timedelta()
                 self.update_status_text("Iniciando nova gravação...")
+                self.show_notification("Gravação Iniciada", "O microfone está captando áudio...")
+
             else:
                 start_time = datetime.now()
                 self.update_status_text("Retomando gravação...")
@@ -248,6 +251,8 @@ class GravadorWidget:
                 hover_color="#8b0000"
             )
             self.update_status_text("Gravação pausada - F9 para continuar, F11 para finalizar")
+            self.show_notification("Gravação Pausada", "A gravação foi pausada. Pressione F9 para continuar.")
+
 
     def finish_recording(self):
         """Finaliza a gravação e processa o áudio."""
@@ -259,6 +264,7 @@ class GravadorWidget:
             is_recording = False
         finish = True
         self.update_status_text("Processando gravação...")
+        self.show_notification("Processando", "Transcrevendo e aprimorando o áudio. Aguarde...")
         self.add_log("Processando gravação...")
         self.root.after(100, self.process_audio)
 
@@ -309,12 +315,22 @@ class GravadorWidget:
                 'text': 'Transcrição formatada e copiada para a área de transferência!'
             })
             message_queue.put({'type': 'finish'})
+            self.show_notification("Transcrição Concluída", "O texto foi copiado para a área de transferência.")
         except Exception as e:
             message_queue.put({
                 'type': 'status',
                 'text': f'Erro na transcrição: {str(e)}'
             })
-            
+
+    def show_notification(self, title, message):
+        """Exibe uma notificação no sistema operacional."""
+        notification.notify(
+            title=title,
+            message=message,
+            app_name="Gravador de Áudio",
+            timeout=5  # Tempo que a notificação fica visível (5s)
+        )
+
     def hide_window(self):
         """Minimiza a janela."""
         self.root.withdraw()
