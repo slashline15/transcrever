@@ -155,7 +155,7 @@ class GravadorWidget:
                     self.update_status_text(message['text'])
                 elif message.get('type') == 'finish':
                     # Em vez de fechar, podemos apenas atualizar o status
-                    self.update_status_text("Operação finalizada!")
+                    self.root.after(2000, self.reset_session)
         except queue.Empty:
             pass
         self.root.after(100, self.check_messages)
@@ -262,6 +262,23 @@ class GravadorWidget:
         self.add_log("Processando gravação...")
         self.root.after(100, self.process_audio)
 
+    def reset_session(self):
+        """Reseta o estado da sessão para uma nova gravação."""
+        global audio_segments, start_time
+        audio_segments.clear()         # Limpa os segmentos de áudio anteriores
+        start_time = None              # Reinicia o tempo de início
+        self.total_elapsed = timedelta()  # Reseta o tempo acumulado
+        
+        # Atualiza o botão para o estado inicial
+        self.record_button.configure(
+            text="▶️ Gravar (Ctrl+Alt+G)",  # ou o atalho que você estiver usando
+            fg_color="red",
+            hover_color="darkred"
+        )
+        
+        self.update_status_text("Pronto para gravar")
+        self.add_log("Sessão reiniciada: pronta para nova gravação.")
+    
     def process_audio(self):
         """Processa o áudio gravado e obtém a transcrição."""
         if audio_segments:
