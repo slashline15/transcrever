@@ -11,6 +11,7 @@ import threading
 import queue
 import pystray
 from plyer import notification
+from plyer.platforms.win.notification import instance as _get_notifier
 from PIL import Image, ImageDraw
 import keyboard
 from dotenv import load_dotenv
@@ -270,7 +271,8 @@ class GravadorWidget:
                         'recording_resumed': '▶️ Gravação retomada',
                         'recording_stopped': '⏹️ Gravação finalizada'
                     }
-                    self.add_log(status_map.get(msg['status'], msg['status']))
+                    texto = status_map.get(msg['status']) or msg['status'] or ""
+                    self.add_log(texto)
                     
                 elif msg['type'] == 'progress':
                     self.update_progress(msg['value'], msg.get('text', ''))
@@ -422,8 +424,11 @@ class GravadorWidget:
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3
                 )
+                if response.choices[0].message.content:
+                    enhanced_text = response.choices[0].message.content.strip()
+                else:
+                    enhanced_text = raw_text        # Fallback para texto original
                 
-                enhanced_text = response.choices[0].message.content.strip()
                 output_tokens = estimate_tokens(enhanced_text)
                 tokens_used = input_tokens + output_tokens
                 gpt_model = self.config["gpt_model"]
@@ -468,7 +473,11 @@ class GravadorWidget:
             self.storage.copy_to_clipboard(transcription_id)
             
             # Calcula tempo total
-            total_time = time.time() - self.processing_start_time
+            if self.processing_start_time:
+                total_time = time.time() - self.processing_start_time
+            else:
+                total_time = 0
+            
             
             self.message_queue.put({
                 'type': 'log',
@@ -496,6 +505,13 @@ class GravadorWidget:
                 pass
                 
         except Exception as e:
+            error_msg = str(e)
+            if error_msg:
+                self.message_queue.put({
+                    'type': 'log',
+                    'text': f'❌ Erro: {error_msg}',
+                    'level': 'error'
+                })
             self.message_queue.put({
                 'type': 'log',
                 'text': f'❌ Erro: {str(e)}',
@@ -566,7 +582,7 @@ class GravadorWidget:
                 item_frame,
                 text="📋 Copiar",
                 width=80,
-                command=lambda tid=transcription.id: self._copy_from_history(tid)
+                command=lambda tid=transcription.id: self._copy_from_history(tid) if tid else None
             )
             copy_btn.pack(side="right", padx=10)
         
@@ -576,6 +592,10 @@ class GravadorWidget:
     
     def _copy_from_history(self, transcription_id: int):
         """Copia transcrição do histórico."""
+        # CORREÇÃO: Verifica ID válido
+        if transcription_id is None:
+            return
+            
         if self.storage.copy_to_clipboard(transcription_id):
             self.show_notification("Copiado!", "Transcrição copiada do histórico")
             self.add_log("📋 Transcrição copiada do histórico", "success")
@@ -597,16 +617,18 @@ class GravadorWidget:
         self.time_label.configure(text="00:00:00")
     
     def show_notification(self, title: str, message: str):
-        """Mostra notificação do sistema."""
+        """Mostra notificação do sistema no Windows via plyer."""
         try:
-            notification.notify(
+            notifier = _get_notifier()       # isto é um WindowsNotification()
+            notifier.notify(                 # ou notifier._notify(...) se preferir
                 title=title,
                 message=message,
                 app_name="Gravador de Áudio v2",
                 timeout=3
             )
-        except:
+        except Exception:
             pass
+
     
     def show_window(self, icon=None, item=None):
         """Mostra janela principal."""

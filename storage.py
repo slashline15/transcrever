@@ -111,65 +111,90 @@ class TranscriptionStorage:
         return round(total_cost, 4), total_tokens
     
     def save_transcription(self, transcription: Transcription) -> int:
-        """Salva transcrição e retorna ID."""
+        """Salva transcrição e retorna o ID gerado."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            
-            # Calcula custo se não fornecido
+
+            # 1) Calcula custo se não fornecido
             if transcription.cost_usd == 0:
-                cost, tokens = self.calculate_cost(
+                cost, _tokens = self.calculate_cost(
                     transcription.audio_duration,
                     transcription.whisper_model,
                     transcription.gpt_model,
-                    transcription.tokens_used // 2,  # Estimativa
-                    transcription.tokens_used // 2
+                    transcription.tokens_used // 2,  # estimativa
+                    transcription.tokens_used // 2,
                 )
                 transcription.cost_usd = cost
-            
-            # Serializa metadata
-            metadata_json = json.dumps(transcription.metadata) if transcription.metadata else None
-            
-            cursor.execute("""
-                INSERT INTO transcriptions 
-                (raw_text, enhanced_text, audio_duration, whisper_model, 
-                 gpt_model, tokens_used, cost_usd, metadata)
+
+            # 2) Serializa metadata (ou passa None)
+            metadata_json = (
+                json.dumps(transcription.metadata)
+                if transcription.metadata
+                else None
+            )
+
+            # 3) Insere no banco
+            cursor.execute(
+                """
+                INSERT INTO transcriptions
+                (raw_text, enhanced_text, audio_duration,
+                whisper_model, gpt_model, tokens_used,
+                cost_usd, metadata)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                transcription.raw_text,
-                transcription.enhanced_text,
-                transcription.audio_duration,
-                transcription.whisper_model,
-                transcription.gpt_model,
-                transcription.tokens_used,
-                transcription.cost_usd,
-                metadata_json
-            ))
-            
+                """,
+                (
+                    transcription.raw_text,
+                    transcription.enhanced_text,
+                    transcription.audio_duration,
+                    transcription.whisper_model,
+                    transcription.gpt_model,
+                    transcription.tokens_used,
+                    transcription.cost_usd,
+                    metadata_json,
+                ),
+            )
+
             transcription_id = cursor.lastrowid
-            
-            # Adiciona ao histórico do clipboard
+
+            # 4) Garante que inseriu algo
+            if not transcription_id:
+                raise ValueError("Falha ao salvar a transcrição no banco de dados")
+
+            # 5) Só adiciona ao histórico se o ID for válido
             self._add_to_clipboard_history(cursor, transcription_id)
-            
+
+            # 6) Commit explícito (opcional, pois o with já comita automaticamente)
             conn.commit()
+
             return transcription_id
-    
+
     def _add_to_clipboard_history(self, cursor, transcription_id: int):
         """Adiciona ao histórico do clipboard."""
-        cursor.execute("""
+        # só adiciona se o ID for um inteiro > 0
+        if not isinstance(transcription_id, int) or transcription_id <= 0:
+            return
+
+        cursor.execute(
+            """
             INSERT INTO clipboard_history (transcription_id)
             VALUES (?)
-        """, (transcription_id,))
-        
-        # Mantém apenas últimos 20 no histórico
-        cursor.execute("""
+            """,
+            (transcription_id,),
+        )
+
+        # mantém apenas os últimos 20 registros
+        cursor.execute(
+            """
             DELETE FROM clipboard_history
             WHERE id NOT IN (
-                SELECT id FROM clipboard_history
+                SELECT id
+                FROM clipboard_history
                 ORDER BY copied_at DESC
                 LIMIT 20
             )
-        """)
-    
+            """
+        )
+
     def get_transcription(self, transcription_id: int) -> Optional[Transcription]:
         """Recupera transcrição por ID."""
         with sqlite3.connect(self.db_path) as conn:
