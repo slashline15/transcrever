@@ -4,3 +4,9 @@ gravacao.wav
 main.spec
 dist/
 build/
+dist\gravacao.wav
+dist\main.exe
+project_doc_config.json
+build.bat
+*__pycache__/
+

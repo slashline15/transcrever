@@ -1,0 +1,12 @@
+openai
+sounddevice
+soundfile
+numpy
+pyperclip
+keyboard
+python-dotenv
+pystray
+customtkinter
+plyer
+pillow
+pyinstaller
