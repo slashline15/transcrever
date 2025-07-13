@@ -1,3 +1,5 @@
+# python build.py
+
 """
 Script de build para Gravador de Áudio v2
 Gera executável com todos os módulos
@@ -24,7 +26,7 @@ if not os.path.exists('icon.ico'):
     print("✅ Ícone criado")
 
 # Verifica se os módulos existem
-required_files = ['main_v2.py', 'audio_core.py', 'storage.py', '.env']
+required_files = ['main.py', 'audio_core.py', 'storage.py', '.env']
 missing = [f for f in required_files if not os.path.exists(f)]
 
 if missing:
@@ -36,7 +38,7 @@ print("🔨 Iniciando build...")
 
 # Configuração do PyInstaller
 PyInstaller.__main__.run([
-    'main_v2.py',
+    'main.py',
     '--name=AudioTranscriber_v2',
     '--onefile',
     '--windowed',
