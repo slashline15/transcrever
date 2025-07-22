@@ -1,0 +1,13 @@
+venv/
+gravacao.wav
+.env
+main.spec
+dist/
+build/
+dist\gravacao.wav
+dist\main.exe
+project_doc_config.json
+*__pycache__/
+
+AudioTranscriber_v2.spec
+build.bat

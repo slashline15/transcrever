@@ -1,0 +1,23 @@
+openai
+sounddevice
+soundfile
+numpy
+pyperclip
+keyboard
+python-dotenv
+pystray
+customtkinter
+plyer
+pillow
+pyinstaller
+
+
+# Pois bem, este é um teste de gravação que será aprimorado com o GPT. Estou interessado em conhecer os custos, embora sejam bastante acessíveis. No entanto, tenho muitos materiais para transcrever. Vamos ver, então, como isso vai funcionar. Alô, moto? Ah, não vou atender agora. É uma pessoa que está ligando. Trata-se de alguém que começou a trabalhar um dia e se acidentou no seguinte. Não vou atender, pois ele já me pediu dinheiro pela manhã. Tudo bem, até mais.
+
+# Esse aqui vai ser um teste sem aprimoramento. Vamos ver como é que ele vai gravar. Acho que depende muito também da qualidade do áudio. Eu acho que eu vou ter que estudar esse código para me colocar ele no meu celular. Muito útil. Beleza? Falou!
+
+# E aí
+
+# Ok, mais um teste aqui que eu ativou pelo comando. Não sei se iniciou a gravação. Pelo que eu estou vendo aqui, iniciou sim. Eu quero saber como inserir áudios que eu já tenho gravado. Mas eu não sei. Vamos ver aqui. Beleza, está ficando bom.
+
+# Essa gravação vai ficar no modo anônimo, então não sei como é que vai ser, vamos ver aí, beleza? Falou!
